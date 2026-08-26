@@ -3,7 +3,7 @@ const moment = require("moment");
 const { fakevCard } = require('../lib/fakevCard');
 
 let botStartTime = Date.now();
-const ALIVE_IMG = "https://files.catbox.moe/6a48t4.png";
+const ALIVE_IMG = "https://images.weserv.nl/?url=raw.githubusercontent.com%2Fnomannomikhan279-wq%2FVU-Ultimate-Noman-Khan%2Fmain%2Fassets%2Fvu-ultimate-logo.svg&output=png";
 
 cmd({
     pattern: "alive",
@@ -38,7 +38,7 @@ cmd({
         `.trim();
 
         if (!ALIVE_IMG || !ALIVE_IMG.startsWith("http")) {
-            throw new Error("Invalid ALIVE_IMG URL. Please set a valid image URL.");
+            throw new Error("Invalid ALIVE_IMG URL. Please set a valid URL.");
         }
 
         await conn.sendMessage(from, {
