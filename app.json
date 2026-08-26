@@ -1,0 +1,21 @@
+{
+  "name": "🔥 VU ULTIMATE PAIR 🔥",
+  "description": "SESSION ID GENERATOR FOR VU ULTIMATE",
+  "logo": "",
+  "keywords": [
+    "@VUUltimate"
+  ],
+  "success_url": "/",
+  "buildpacks": [
+    {
+      "url": "https://github.com/heroku/heroku-buildpack-nodejs#latest"
+    }
+  ],
+  "env": {
+    "MESSAGE": {
+      "description": "Msg Attached With Session ID",
+      "value": "🔰 BY || VU ULTIMATE || DEVELOPER: NOMAN KHAN 🔰",
+      "required": false
+    }
+  }
+}
