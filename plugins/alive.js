@@ -2,8 +2,8 @@ const { cmd } = require("../redx");
 const moment = require("moment");
 const { fakevCard } = require('../lib/fakevCard');
 
-let botStartTime = Date.now(); // Recording the start time of the bot
-const ALIVE_IMG = "https://files.catbox.moe/6a48t4.png"; // Make sure this URL is valid
+let botStartTime = Date.now();
+const ALIVE_IMG = "https://files.catbox.moe/6a48t4.png";
 
 cmd({
     pattern: "alive",
@@ -13,7 +13,7 @@ cmd({
     filename: __filename
 }, async (conn, mek, m, { reply, from }) => {
     try {
-        const pushname = m.pushName || "User"; // Username or default value
+        const pushname = m.pushName || "User";
         const currentTime = moment().format("HH:mm:ss");
         const currentDate = moment().format("dddd, MMMM Do YYYY");
 
@@ -37,16 +37,14 @@ cmd({
 🎉 *Enjoy the Service!*
         `.trim();
 
-        // Check if the image is defined
         if (!ALIVE_IMG || !ALIVE_IMG.startsWith("http")) {
             throw new Error("Invalid ALIVE_IMG URL. Please set a valid image URL.");
         }
 
-        // Send the message with image and caption
         await conn.sendMessage(from, {
-            image: { url: ALIVE_IMG }, // Check that the URL is valid
+            image: { url: ALIVE_IMG },
             caption: formattedInfo,
-            contextInfo: { 
+            contextInfo: {
                 mentionedJid: [m.sender],
                 forwardingScore: 999,
                 isForwarded: true,
@@ -60,15 +58,18 @@ cmd({
 
     } catch (error) {
         console.error("Error in alive command: ", error);
-        
-        // Respond with error details 
-        const errorMessage = `
-❌ An error occurred while processing the alive command.
-🛠 *Error Details*:
-${error.message}
-
-Please report this issue or try again later.
-        `.trim();
-        return reply(errorMessage);
+        return reply(`❌ An error occurred while processing the alive command.\n\n🛠 Error: ${error.message}`);
     }
+});
+
+// 📱 VU ULTIMATE APP LINK
+cmd({
+    pattern: "applink",
+    alias: ["app", "app-link"],
+    desc: "Get the VU ULTIMATE app link",
+    category: "main",
+    react: "📱",
+    filename: __filename
+}, async (conn, mek, m, { reply }) => {
+    await reply("📱 *VU ULTIMATE APP*\n\n🔗 https://rb.gy/vwxyp9");
 });
