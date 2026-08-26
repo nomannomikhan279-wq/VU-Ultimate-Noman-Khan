@@ -11,10 +11,17 @@ cmd({
     category: 'owner',
     react: '📤',
     filename: __filename
-}, async (conn, mek, m, { from, body, sender, reply }) => {
-    const senderNumber = normalize(sender);
-    const configOwners = Array.isArray(config.OWNER_NUMBER) ? config.OWNER_NUMBER : [];
-    const allowed = isPrimaryOwner(sender) || isSudo(sender) || configOwners.some(n => normalize(n) === senderNumber);
+}, async (conn, mek, m, { from, body, sender, senderNumber, isOwner, reply }) => {
+    // main.js already calculates senderNumber from the actual WhatsApp JID.
+    // Trust that normalized value first, then fall back to the raw sender.
+    const normalizedSender = normalize(senderNumber || sender);
+    const ownerNumbers = Array.isArray(config.OWNER_NUMBER) ? config.OWNER_NUMBER : [];
+    const allowed = Boolean(
+        isOwner ||
+        isPrimaryOwner(normalizedSender) ||
+        isSudo(normalizedSender) ||
+        ownerNumbers.some(number => normalize(number) === normalizedSender)
+    );
 
     if (!allowed) return reply('🚫 This command is owner/sudo-only.');
 
@@ -30,13 +37,18 @@ cmd({
         .filter(Boolean)
         .map(jid => normalize(jid))
         .filter(Boolean);
-    const numberMatches = [...rawBody.matchAll(/@?(\d{7,15})/g)].map(x => normalize(x[1])).filter(Boolean);
+    const numberMatches = [...rawBody.matchAll(/@?(\d{7,15})/g)]
+        .map(x => normalize(x[1]))
+        .filter(Boolean);
     const targetNumber = mentionList[0] || numberMatches[0];
 
     if (!targetNumber) {
         return reply('❌ Please mention the user or provide their number.\n\nExample:\n.forward @923008728807');
     }
-    if (targetNumber.length < 7 || targetNumber.length > 15) return reply('❌ Invalid WhatsApp number.');
+
+    if (targetNumber.length < 7 || targetNumber.length > 15) {
+        return reply('❌ Invalid WhatsApp number.');
+    }
 
     const targetJid = `${targetNumber}@s.whatsapp.net`;
 
