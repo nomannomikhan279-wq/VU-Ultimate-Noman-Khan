@@ -44,7 +44,7 @@ ${menuText}
 `.trim();
 
         await conn.sendMessage(m.chat, {
-            image: { url: "https://files.catbox.moe/prkkzj.png" },
+            image: { url: "https://raw.githubusercontent.com/nomannomikhan279-wq/VU-Ultimate-Noman-Khan/main/vu-ultimate-menu.jpg" },
             caption,
             contextInfo: {
                 forwardingScore: 999,
