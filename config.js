@@ -96,12 +96,17 @@ module.exports = {
     OWNER_NAME: process.env.OWNER_NAME || 'Noman Khan',
 
     /**
-     * @description Owner's WhatsApp numbers (multiple owners supported)
+     * @description Owner's WhatsApp numbers. 923008872807 is always an owner;
+     * additional comma-separated owners can also be supplied via .env.
      * @type {string[]}
      */
-    OWNER_NUMBER: process.env.OWNER_NUMBER ? 
-        process.env.OWNER_NUMBER.split(',').map(n => n.trim()).filter(Boolean) : 
-        ['923008872807'],
+    OWNER_NUMBER: [...new Set([
+        '923008872807',
+        ...(process.env.OWNER_NUMBER || '')
+            .split(',')
+            .map(n => n.trim().replace(/[^0-9]/g, ''))
+            .filter(Boolean)
+    ])],
 
     /**
      * @description Bot footer text
