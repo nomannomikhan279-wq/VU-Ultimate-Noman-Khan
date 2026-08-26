@@ -61,15 +61,3 @@ cmd({
         return reply(`❌ An error occurred while processing the alive command.\n\n🛠 Error: ${error.message}`);
     }
 });
-
-// 📱 VU ULTIMATE APP LINK
-cmd({
-    pattern: "applink",
-    alias: ["app", "app-link"],
-    desc: "Get the VU ULTIMATE app link",
-    category: "main",
-    react: "📱",
-    filename: __filename
-}, async (conn, mek, m, { reply }) => {
-    await reply("📱 *VU ULTIMATE APP*\n\n🔗 https://rb.gy/vwxyp9");
-});
