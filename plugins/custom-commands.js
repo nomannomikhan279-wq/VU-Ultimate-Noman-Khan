@@ -61,8 +61,14 @@ function registerCustomCommand(commandName) {
             const saved = await getCustomCommand(botNumber, name);
             if (!saved) return;
 
+            // Preserve text exactly. If the response contains WhatsApp-style
+            // numeric mentions (e.g. @923XXXXXXXXX), pass the JIDs as metadata.
+            const mentions = [...saved.response.matchAll(/@(\d{7,15})/g)]
+                .map(match => `${match[1]}@s.whatsapp.net`);
+
             await conn.sendMessage(from, {
-                text: saved.response
+                text: saved.response,
+                ...(mentions.length ? { mentions: [...new Set(mentions)] } : {})
             }, { quoted: mek });
         } catch (error) {
             console.error(`[CustomCommand:${name}]`, error);
@@ -289,11 +295,13 @@ cmd({
 });
 
 // ==================== LOAD SAVED COMMAND NAMES ====================
-(async () => {
+// Delay until the current plugin-loading pass has finished, so every built-in
+// command is already registered before custom command collision checks run.
+setImmediate(async () => {
     try {
         const ready = await waitForDatabase();
         if (!ready) {
-            console.warn('[CustomCommand] MongoDB was not ready; saved commands will load after restart/reconnect.');
+            console.warn('[CustomCommand] MongoDB was not ready; saved commands were not loaded.');
             return;
         }
 
@@ -304,4 +312,4 @@ cmd({
     } catch (error) {
         console.error('[CustomCommand] Startup load error:', error.message);
     }
-})();
+});
