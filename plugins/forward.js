@@ -1,4 +1,5 @@
 const { cmd } = require('../redx');
+const config = require('../config');
 
 // 👑 Owner-only message/file forwarder
 // Usage: reply to any message/file/image and send: .forward @923XXXXXXXXX
@@ -9,8 +10,22 @@ cmd({
     category: 'owner',
     react: '📤',
     filename: __filename
-}, async (conn, mek, m, { from, body, isOwner, reply }) => {
-    if (!isOwner) {
+}, async (conn, mek, m, { from, body, sender, isOwner, reply }) => {
+
+    // Extra owner check here so the command still works when WhatsApp gives
+    // the sender in local format (0300...) while config stores 92300....
+    const normalize = (number) => {
+        let n = String(number || '').replace(/[^0-9]/g, '');
+        if (n.startsWith('00')) n = n.slice(2);
+        if (n.startsWith('0') && n.length === 11) n = '92' + n.slice(1);
+        return n;
+    };
+
+    const ownerNumbers = Array.isArray(config.OWNER_NUMBER) ? config.OWNER_NUMBER : [];
+    const senderNumber = normalize(sender);
+    const ownerByNumber = ownerNumbers.some(number => normalize(number) === senderNumber);
+
+    if (!isOwner && !ownerByNumber) {
         return reply('🚫 This command is owner-only.');
     }
 
@@ -41,8 +56,6 @@ cmd({
     const targetJid = `${targetNumber}@s.whatsapp.net`;
 
     try {
-        // Baileys accepts a WAMessage in the forward payload. Reusing the
-        // original quoted message preserves text and supported media types.
         const quotedMessage = {
             key: {
                 remoteJid: from,
