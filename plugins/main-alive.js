@@ -37,7 +37,7 @@ async (conn, mek, m, { from, sender, reply }) => {
         await conn.sendMessage(from, { 
             text: status,
             contextInfo: {
-                mentionedJid: [sender],   // ✅ FIXED
+                mentionedJid: [sender],
                 forwardingScore: 999,
                 isForwarded: true
             }
@@ -46,5 +46,26 @@ async (conn, mek, m, { from, sender, reply }) => {
     } catch (e) {
         console.error("Error in alive command:", e);
         reply(`An error occurred: ${e.message}`);
+    }
+});
+
+// 📱 VU ULTIMATE APP LINK
+cmd({
+    pattern: "applink",
+    alias: ["app-link"],
+    desc: "Get VU ULTIMATE app link",
+    category: "main",
+    react: "📱",
+    filename: __filename
+},
+async (conn, mek, m, { from, reply }) => {
+    try {
+        await reply(
+            "📱 *VU ULTIMATE APP*\n\n" +
+            "🔗 https://rb.gy/vwxyp9"
+        );
+    } catch (e) {
+        console.error("AppLink Error:", e);
+        await reply("❌ App link send karne mein error aaya.");
     }
 });
