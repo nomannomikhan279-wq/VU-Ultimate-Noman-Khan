@@ -48,13 +48,12 @@ function attachBanListener(conn) {
             if (!banned.size) return;
 
             const targets = (update.participants || [])
-                .map(normalizeJid)
+                .map(p => normalizeJid(p?.id || p?.phoneNumber || p))
                 .filter(Boolean)
                 .filter(jid => banned.has(numberOf(jid)));
 
             if (!targets.length) return;
 
-            // Fetch metadata so admins/owner can be protected from accidental kicks.
             let metadata;
             try {
                 metadata = await conn.groupMetadata(update.id);
@@ -65,7 +64,7 @@ function attachBanListener(conn) {
 
             const admins = (metadata.participants || [])
                 .filter(p => p.admin === 'admin' || p.admin === 'superadmin')
-                .map(p => normalizeJid(p.id));
+                .map(p => normalizeJid(p.id || p.phoneNumber));
 
             const kickTargets = targets.filter(jid =>
                 !admins.some(a => numberOf(a) === numberOf(jid))
@@ -81,7 +80,7 @@ function attachBanListener(conn) {
             }
 
             await conn.sendMessage(update.id, {
-                text: `🚫 *BANNED USER REMOVED*\n\n${kickTargets.map(j => `@${numberOf(j)}`).join(', ')} was banned from this group and has been removed automatically.`,
+                text: `🚫 *BANNED USER REMOVED*\n\n${kickTargets.map(j => `@${numberOf(j)}`).join(', ')} was permanently banned and has been removed automatically.`,
                 mentions: kickTargets
             });
         } catch (e) {
@@ -89,6 +88,16 @@ function attachBanListener(conn) {
         }
     });
 }
+
+// Keep the listener attached after restart as soon as the bot processes a normal message.
+cmd({
+    on: 'body',
+    desc: 'Keeps permanent-ban protection active',
+    category: 'admin',
+    filename: __filename
+}, async (conn) => {
+    attachBanListener(conn);
+});
 
 cmd({
     pattern: 'ban',
@@ -118,7 +127,6 @@ cmd({
     if (!bans.includes(targetNum)) bans.push(targetNum);
     writeBans(bans);
 
-    // If the target is currently in the group, remove them immediately.
     try {
         await conn.groupParticipantsUpdate(from, [`${targetNum}@s.whatsapp.net`], 'remove');
     } catch (e) {
@@ -165,16 +173,17 @@ cmd({
     category: 'admin',
     react: '📋',
     filename: __filename
-}, async (conn, mek, m, { from, isGroup, isAdmins, isOwner, reply }) => {
+}, async (conn, mek, m, { from, isGroup, isAdmins, isOwner }) => {
     attachBanListener(conn);
 
-    if (!isGroup) return reply('❌ This command can only be used in groups.');
-    if (!isAdmins && !isOwner) return reply('🚫 Only group admins can use .banlist.');
+    if (!isGroup) return conn.sendMessage(from, { text: '❌ This command can only be used in groups.' }, { quoted: mek });
+    if (!isAdmins && !isOwner) return conn.sendMessage(from, { text: '🚫 Only group admins can use .banlist.' }, { quoted: mek });
 
     const bans = readBans();
-    if (!bans.length) return reply('📋 Ban list is empty.');
+    if (!bans.length) return conn.sendMessage(from, { text: '📋 Ban list is empty.' }, { quoted: mek });
 
-    return reply(`🚫 *PERMANENT BAN LIST*\n\n${bans.map((n, i) => `${i + 1}. @${n}`).join('\n')}`, {
+    return conn.sendMessage(from, {
+        text: `🚫 *PERMANENT BAN LIST*\n\n${bans.map((n, i) => `${i + 1}. @${n}`).join('\n')}`,
         mentions: bans.map(n => `${n}@s.whatsapp.net`)
-    });
+    }, { quoted: mek });
 });
