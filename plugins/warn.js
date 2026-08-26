@@ -39,7 +39,6 @@ async function enforceWarning(conn, mek, m, {
     const count = await addWarning(from, target);
     const mention = [target];
 
-    // Remove the violating message when possible.
     if (mek?.key && isBotAdmins) {
         try {
             await conn.sendMessage(from, { delete: mek.key });
@@ -69,8 +68,8 @@ async function enforceWarning(conn, mek, m, {
         return;
     }
 
-    const icon = reason === 'sticker' ? '🎟️' : reason === 'link' ? '🔗' : '⚠️';
-    const reasonText = reason === 'sticker' ? 'Sticker is not allowed.' : reason === 'link' ? 'Links are not allowed.' : 'Rule violation.';
+    const icon = reason === 'link' ? '🔗' : '⚠️';
+    const reasonText = reason === 'link' ? 'Links are not allowed.' : 'Rule violation.';
     return conn.sendMessage(from, {
         text: `${icon} @${target.split('@')[0]} WARNING ${count}/3\n\n${reasonText}\n⚠️ 3 warnings = automatic kick.`,
         mentions: mention
@@ -109,21 +108,19 @@ cmd({
     }
 });
 
-// Automatic protection: stickers and links.
+// Automatic protection: links only.
 cmd({
     on: 'body',
-    desc: 'Automatic sticker/link warning system',
+    desc: 'Automatic link warning system',
     category: 'admin',
     filename: __filename
-}, async (conn, mek, m, { from, body, isGroup, sender, senderNumber, isOwner, isBotAdmins, isAdmins, groupAdmins, reply }) => {
+}, async (conn, mek, m, { from, body, isGroup, sender, isOwner, isBotAdmins, isAdmins, groupAdmins, reply }) => {
     if (!isGroup) return;
     if (!sender || sender === from) return;
     if (isOwner || isAdmins) return;
 
-    const type = m?.mtype || '';
-    const hasSticker = type === 'stickerMessage';
     const hasLink = typeof body === 'string' && LINK_REGEX.test(body);
-    if (!hasSticker && !hasLink) return;
+    if (!hasLink) return;
 
     const target = normalizeJid(sender);
     if (!target) return;
@@ -134,10 +131,10 @@ cmd({
             target,
             groupAdmins,
             isBotAdmins,
-            reason: hasSticker ? 'sticker' : 'link',
+            reason: 'link',
             reply
         });
     } catch (error) {
-        console.error('[WARN] Automatic warning error:', error);
+        console.error('[WARN] Automatic link warning error:', error);
     }
 });
