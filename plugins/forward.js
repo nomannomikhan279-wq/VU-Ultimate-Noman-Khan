@@ -1,8 +1,12 @@
 const { cmd } = require('../redx');
 const config = require('../config');
+const {
+    generateForwardMessageContent,
+    generateWAMessageFromContent
+} = require('@whiskeysockets/baileys');
 
-// 👑 Owner-only message/file forwarder
-// Usage: reply to any message/file/image and send: .forward @923XXXXXXXXX
+// 👑 Owner/Sudo message forwarder
+// Reply to any message/file/image and send: .forward @923XXXXXXXXX
 cmd({
     pattern: 'forward',
     alias: ['fwd'],
@@ -11,9 +15,6 @@ cmd({
     react: '📤',
     filename: __filename
 }, async (conn, mek, m, { from, body, sender, isOwner, reply }) => {
-
-    // Extra owner check here so the command still works when WhatsApp gives
-    // the sender in local format (0300...) while config stores 92300....
     const normalize = (number) => {
         let n = String(number || '').replace(/[^0-9]/g, '');
         if (n.startsWith('00')) n = n.slice(2);
@@ -30,13 +31,12 @@ cmd({
     }
 
     if (!m.quoted || !m.quoted.message) {
-        return reply('❌ Please reply to a message, image, video, document, audio or sticker.\n\nExample:\n.forward @923008872807');
+        return reply('❌ Please reply to a message, image, video, document, audio or sticker.\n\nExample:\n.forward @923008728807');
     }
 
     const rawBody = String(body || '');
     const numbers = [...rawBody.matchAll(/@?(\d{7,15})/g)].map(match => match[1]);
 
-    // Prefer WhatsApp's actual mention metadata when available.
     const mentioned = m.msg?.contextInfo?.mentionedJid || [];
     const mentionedList = (Array.isArray(mentioned) ? mentioned : [mentioned])
         .filter(Boolean)
@@ -46,7 +46,7 @@ cmd({
     const targetNumber = mentionedList[0] || numbers[0];
 
     if (!targetNumber) {
-        return reply('❌ Please mention the user you want to send this to.\n\nExample:\n.forward @923008872807');
+        return reply('❌ Please mention the user you want to send this to.\n\nExample:\n.forward @923008728807');
     }
 
     if (targetNumber.length < 7 || targetNumber.length > 15) {
@@ -56,19 +56,27 @@ cmd({
     const targetJid = `${targetNumber}@s.whatsapp.net`;
 
     try {
-        const quotedMessage = {
-            key: {
-                remoteJid: from,
-                id: m.quoted.stanzaId || `FORWARD_${Date.now()}`,
-                fromMe: false,
-                participant: m.quoted.participant || undefined
+        // Use Baileys' official forward-message generation instead of manually
+        // rebuilding the message key. The previous implementation could report
+        // success while WhatsApp silently rejected the malformed forwarded key.
+        const originalMessage = {
+            key: m.quoted.key || {
+                remoteJid: m.quoted.chat || from,
+                id: m.quoted.id || m.quoted.stanzaId,
+                participant: m.quoted.participant,
+                fromMe: false
             },
             message: m.quoted.message
         };
 
-        await conn.sendMessage(targetJid, {
-            forward: quotedMessage,
-            force: true
+        const forwardContent = await generateForwardMessageContent(originalMessage, true);
+        const forwardMessage = generateWAMessageFromContent(targetJid, forwardContent, {
+            userJid: conn.user?.id,
+            upload: conn.waUploadToServer
+        });
+
+        await conn.relayMessage(targetJid, forwardMessage.message, {
+            messageId: forwardMessage.key.id
         });
 
         return reply(`✅ Message forwarded successfully to @${targetNumber}`, from, {
@@ -76,6 +84,6 @@ cmd({
         });
     } catch (error) {
         console.error('[Forward] Error:', error);
-        return reply('❌ Failed to forward the message. Please try again.');
+        return reply(`❌ Failed to forward the message.\n\n${error?.message || 'Unknown forwarding error.'}`);
     }
 });
