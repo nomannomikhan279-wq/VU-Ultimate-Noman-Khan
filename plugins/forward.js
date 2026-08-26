@@ -34,7 +34,6 @@ cmd({
         return reply('❌ Please mention the user you want to send this to.\n\nExample:\n.forward @923008872807');
     }
 
-    // Avoid accidentally forwarding to an invalid/broadcast-style destination.
     if (targetNumber.length < 7 || targetNumber.length > 15) {
         return reply('❌ Invalid WhatsApp number.');
     }
@@ -42,9 +41,8 @@ cmd({
     const targetJid = `${targetNumber}@s.whatsapp.net`;
 
     try {
-        // Build the minimum WAMessage object expected by Baileys' forward helper.
-        // The original quoted message content is kept intact, so images, videos,
-        // documents, audio, stickers and normal text can all be forwarded.
+        // Baileys accepts a WAMessage in the forward payload. Reusing the
+        // original quoted message preserves text and supported media types.
         const quotedMessage = {
             key: {
                 remoteJid: from,
@@ -60,7 +58,7 @@ cmd({
             force: true
         });
 
-        return reply(`✅ Message forwarded successfully to @${targetNumber}`, {
+        return reply(`✅ Message forwarded successfully to @${targetNumber}`, from, {
             mentions: [targetJid]
         });
     } catch (error) {
