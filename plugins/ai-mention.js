@@ -80,7 +80,15 @@ function extractText(data) {
 
 async function generateContent(key, model, prompt) {
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`;
-    const response = await axios.post(url, { contents: [{ role: 'user', parts: [{ text: prompt }] }], generationConfig: { maxOutputTokens: MAX_TOKENS } }, { timeout: TIMEOUT, headers: { 'x-goog-api-key': key, 'Content-Type': 'application/json' }, validateStatus: () => true });
+    // Gemini 3.x no longer needs legacy sampling parameters; keep the request minimal.
+    const response = await axios.post(url, {
+        contents: [{ role: 'user', parts: [{ text: prompt }] }],
+        generationConfig: { maxOutputTokens: MAX_TOKENS }
+    }, {
+        timeout: TIMEOUT,
+        headers: { 'x-goog-api-key': key, 'Content-Type': 'application/json' },
+        validateStatus: () => true
+    });
     const answer = extractText(response.data);
     if (response.status >= 200 && response.status < 300 && answer) return answer;
     const err = new Error(response.data?.error?.message || `Gemini HTTP ${response.status}`);
@@ -93,14 +101,22 @@ async function ask(question, old) {
     const key = getKey();
     if (!key) throw Object.assign(new Error('AI_NOT_CONFIGURED'), { code: 'AI_NOT_CONFIGURED' });
     const configured = String(config.AI_MODEL || process.env.AI_MODEL || '').trim();
-    const models = [...new Set([configured, 'gemini-3.7-flash', 'gemini-3.6-flash', 'gemini-2.5-flash'].filter(Boolean))];
+    // Prefer current GA Flash models. 2.5 can return 404 for newer projects.
+    const models = [...new Set([
+        configured,
+        'gemini-3.7-flash',
+        'gemini-3.6-flash',
+        'gemini-3.5-flash',
+        'gemini-3.5-flash-lite',
+        'gemini-2.5-flash'
+    ].filter(Boolean))];
     const prompt = makePrompt(question, old);
     let last;
     for (const model of models) {
         try { return await generateContent(key, model, prompt); }
         catch (e) {
             last = e;
-            if (![404].includes(e.status)) throw e;
+            if (e.status !== 404) throw e;
         }
     }
     throw last || new Error('No supported Gemini model available');
@@ -125,7 +141,11 @@ async function handle(conn, mek, m, ctx) {
         await conn.sendMessage(ctx.from, { text: answer }, { quoted: mek });
     } catch (error) {
         console.error(`[AI Mention] ${error?.status || error?.code || ''} ${error?.model || ''} ${error?.message || error}`);
-        const text = error?.status === 404 ? '❌ No compatible Gemini model is available for this API key/project. Please create/select a Gemini API key in Google AI Studio and redeploy.' : error?.status === 400 || error?.status === 403 ? `❌ Gemini AI error (${error.status}). Check the API key/project permissions.` : '❌ AI service temporarily unavailable. Please try again.';
+        const text = error?.status === 404
+            ? '❌ No compatible Gemini model is available for this API key/project. Please create/select a Gemini API key in Google AI Studio and redeploy.'
+            : error?.status === 400 || error?.status === 403
+                ? `❌ Gemini AI error (${error.status}). Check the API key/project permissions.`
+                : '❌ AI service temporarily unavailable. Please try again.';
         await conn.sendMessage(ctx.from, { text }, { quoted: mek });
     } finally {
         pending.delete(sessionKey);
