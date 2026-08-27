@@ -1,6 +1,6 @@
 {
   "name": "vu-ultimate",
-  "version": "2.0.1",
+  "version": "2.0.2",
   "description": "WhatsApp Bot Created By Noman Khan (VU ULTIMATE)",
   "main": "index.js",
   "engines": { "node": "20.x" },
@@ -31,7 +31,7 @@
     "fluent-ffmpeg": "^2.1.2",
     "wa-sticker-formatter": "^4.4.4",
     "@ffmpeg-installer/ffmpeg": "^1.1.0",
-    "file-type": "21.0.0",
+    "file-type": "^16.5.4",
     "mongoose": "^8.0.0",
     "moment": "^2.30.1",
     "moment-timezone": "^0.6.0"
