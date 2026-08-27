@@ -62,5 +62,14 @@ module.exports = {
     LOGGING_ENABLED: process.env.LOGGING_ENABLED || 'true',
     BAILEYS: '@whiskeysockets/baileys',
     TELEGRAM_BOT_TOKEN: process.env.TELEGRAM_BOT_TOKEN || '',
-    TELEGRAM_CHAT_ID: process.env.TELEGRAM_CHAT_ID || ''
+    TELEGRAM_CHAT_ID: process.env.TELEGRAM_CHAT_ID || '',
+
+    // ========== 🤖 AI MENTION SETTINGS ==========
+    AI_API_KEY: process.env.AI_API_KEY || process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || '',
+    AI_MODEL: process.env.AI_MODEL || 'gemini-3.7-flash',
+    AI_API_URL: process.env.AI_API_URL || 'https://generativelanguage.googleapis.com/v1beta/interactions',
+    AI_COOLDOWN_MS: Number(process.env.AI_COOLDOWN_MS || 5000),
+    AI_CONTEXT_MESSAGES: Number(process.env.AI_CONTEXT_MESSAGES || 6),
+    AI_MAX_OUTPUT_TOKENS: Number(process.env.AI_MAX_OUTPUT_TOKENS || 700),
+    AI_TIMEOUT_MS: Number(process.env.AI_TIMEOUT_MS || 30000)
 };
