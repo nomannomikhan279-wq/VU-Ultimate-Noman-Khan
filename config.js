@@ -22,10 +22,7 @@ module.exports = {
     OWNER_NAME: process.env.OWNER_NAME || 'Noman Khan',
     PRIMARY_OWNER_JID,
     PRIMARY_OWNER_NUMBER,
-    OWNER_NUMBER: [...new Set([
-        PRIMARY_OWNER_NUMBER,
-        ...(process.env.OWNER_NUMBER || '').split(',').map(n => n.trim().replace(/[^0-9]/g, '')).filter(Boolean)
-    ])],
+    OWNER_NUMBER: [...new Set([PRIMARY_OWNER_NUMBER, ...(process.env.OWNER_NUMBER || '').split(',').map(n => n.trim().replace(/[^0-9]/g, '')).filter(Boolean)])],
     BOT_FOOTER: process.env.BOT_FOOTER || '© ᴘᴏᴡᴇʀᴇᴅ ʙʏ Noman Khan',
     AUTO_STATUS_SEEN: process.env.AUTO_STATUS_SEEN || 'true',
     AUTO_STATUS_REACT: process.env.AUTO_STATUS_REACT || 'true',
@@ -66,8 +63,8 @@ module.exports = {
 
     // ========== 🤖 AI MENTION SETTINGS ==========
     AI_API_KEY: process.env.AI_API_KEY || process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || '',
-    AI_MODEL: process.env.AI_MODEL || 'gemini-2.5-flash',
-    // Gemini generateContent endpoint. Keep the full API base URL here.
+    // Gemini 2.5 can be restricted for newer projects; use the current GA Flash model by default.
+    AI_MODEL: process.env.AI_MODEL || 'gemini-3.5-flash',
     AI_API_URL: process.env.AI_API_URL || 'https://generativelanguage.googleapis.com/v1beta',
     AI_COOLDOWN_MS: Number(process.env.AI_COOLDOWN_MS || 5000),
     AI_CONTEXT_MESSAGES: Number(process.env.AI_CONTEXT_MESSAGES || 6),
