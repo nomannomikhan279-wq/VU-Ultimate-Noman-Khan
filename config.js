@@ -66,8 +66,9 @@ module.exports = {
 
     // ========== 🤖 AI MENTION SETTINGS ==========
     AI_API_KEY: process.env.AI_API_KEY || process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || '',
-    AI_MODEL: process.env.AI_MODEL || 'gemini-3.7-flash',
-    AI_API_URL: process.env.AI_API_URL || 'https://generativelanguage.googleapis.com/v1beta/interactions',
+    AI_MODEL: process.env.AI_MODEL || 'gemini-2.5-flash',
+    // Gemini generateContent endpoint. Keep the full API base URL here.
+    AI_API_URL: process.env.AI_API_URL || 'https://generativelanguage.googleapis.com/v1beta',
     AI_COOLDOWN_MS: Number(process.env.AI_COOLDOWN_MS || 5000),
     AI_CONTEXT_MESSAGES: Number(process.env.AI_CONTEXT_MESSAGES || 6),
     AI_MAX_OUTPUT_TOKENS: Number(process.env.AI_MAX_OUTPUT_TOKENS || 700),
