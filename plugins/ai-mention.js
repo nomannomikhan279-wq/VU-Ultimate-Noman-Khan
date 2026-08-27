@@ -1,5 +1,5 @@
 // ============================================
-// 🤖 AI MENTION REPLY - VU ULTIMATE
+// 🤖 AI MENTION + REPLY-TO-BOT - VU ULTIMATE
 // ============================================
 const axios = require('axios');
 const { cmd } = require('../redx');
@@ -20,7 +20,10 @@ function getKey() { return String(config.AI_API_KEY || process.env.AI_API_KEY ||
 function botIds(conn) {
     const ids = new Set();
     const add = j => { if (j) ids.add(norm(j)); };
-    add(conn?.user?.id); add(conn?.authState?.creds?.me?.id); add(conn?.authState?.creds?.me?.lid); add(conn?.authState?.creds?.account?.lid);
+    add(conn?.user?.id);
+    add(conn?.authState?.creds?.me?.id);
+    add(conn?.authState?.creds?.me?.lid);
+    add(conn?.authState?.creds?.account?.lid);
     const n = num(conn?.user?.id) || num(conn?.authState?.creds?.me?.id);
     if (n) { add(`${n}@s.whatsapp.net`); add(`${n}@lid`); }
     return ids;
@@ -36,7 +39,8 @@ function collectMentions(value, out = []) {
 
 function isMentioned(conn, mek) {
     if (!mek?.key?.remoteJid?.endsWith('@g.us')) return false;
-    const ids = botIds(conn), botNumber = num(conn?.user?.id) || num(conn?.authState?.creds?.me?.id);
+    const ids = botIds(conn);
+    const botNumber = num(conn?.user?.id) || num(conn?.authState?.creds?.me?.id);
     return collectMentions(mek.message).some(j => ids.has(norm(j)) || (botNumber && num(j) === botNumber));
 }
 
@@ -56,9 +60,39 @@ function unwrapMessage(message) {
 function findText(value) {
     if (!value || typeof value !== 'object') return '';
     if (Array.isArray(value)) { for (const item of value) { const t = findText(item); if (t) return t; } return ''; }
-    for (const t of [value.conversation, value.extendedTextMessage?.text, value.imageMessage?.caption, value.videoMessage?.caption, value.documentMessage?.caption]) if (typeof t === 'string' && t.trim()) return t.trim();
+    for (const t of [value.conversation, value.extendedTextMessage?.text, value.imageMessage?.caption, value.videoMessage?.caption, value.documentMessage?.caption, value.buttonsResponseMessage?.selectedDisplayText, value.listResponseMessage?.title]) {
+        if (typeof t === 'string' && t.trim()) return t.trim();
+    }
     for (const [k, v] of Object.entries(value)) if (k !== 'contextInfo' && k !== 'mentionedJid' && v && typeof v === 'object') { const t = findText(v); if (t) return t; }
     return '';
+}
+
+function getContextInfo(mek) {
+    const msg = unwrapMessage(mek?.message || {});
+    return msg.extendedTextMessage?.contextInfo ||
+        msg.imageMessage?.contextInfo ||
+        msg.videoMessage?.contextInfo ||
+        msg.documentMessage?.contextInfo ||
+        msg.buttonsResponseMessage?.contextInfo ||
+        msg.listResponseMessage?.contextInfo || null;
+}
+
+function getQuotedMessage(mek) {
+    const info = getContextInfo(mek);
+    return info?.quotedMessage ? unwrapMessage(info.quotedMessage) : null;
+}
+
+function isReplyToBot(conn, mek) {
+    if (!mek?.key?.remoteJid?.endsWith('@g.us')) return false;
+    const info = getContextInfo(mek);
+    if (!info?.quotedMessage) return false;
+    const ids = botIds(conn);
+    const quotedParticipant = norm(info.participant || '');
+    if (ids.has(quotedParticipant)) return true;
+    // Messages sent by this connection can have a quoted participant that is absent.
+    // In that case WhatsApp's quoted key often carries the bot's own JID.
+    const quotedKeyParticipant = norm(info?.quotedMessage?.key?.participant || '');
+    return ids.has(quotedKeyParticipant);
 }
 
 function clean(text, conn) {
@@ -68,19 +102,22 @@ function clean(text, conn) {
     return s.replace(/\s+/g, ' ').trim();
 }
 
-function makePrompt(question, old) {
-    const ctx = old.length ? `\nRecent context:\n${old.map(x => `${x.r}: ${x.t}`).join('\n')}` : '';
-    return `You are VU ULTIMATE, a helpful WhatsApp group assistant. Answer directly and concisely. Match the user's English, Urdu, Roman Urdu or Hinglish. Help with programming, general knowledge, explanations, translations and calculations. Do not unnecessarily mention being an AI.${ctx}\n\nQuestion:\n${question}`;
+function conversationKey(from, sender) { return `${norm(from)}:${norm(sender)}`; }
+
+function makePrompt(question, old, repliedText) {
+    const ctx = old.length ? `\nRecent conversation:\n${old.map(x => `${x.r}: ${x.t}`).join('\n')}` : '';
+    const replyContext = repliedText ? `\nThe user is replying to your previous WhatsApp message. Previous message:\n${repliedText}\n` : '';
+    return `You are VU ULTIMATE, a helpful WhatsApp group assistant. Answer directly and concisely. Match the user's English, Urdu, Roman Urdu or Hinglish. Help with programming, general knowledge, explanations, translations and calculations. If the user is replying to your previous message, understand that message as context and answer the user's follow-up. Do not unnecessarily mention being an AI.${ctx}${replyContext}\n\nUser question/follow-up:\n${question}`;
 }
 
 function extractText(data) {
-    const candidates = Array.isArray(data?.candidates) ? data.candidates : [];
-    return candidates.flatMap(c => c?.content?.parts || []).map(p => p?.text).filter(Boolean).join('').trim();
+    return (Array.isArray(data?.candidates) ? data.candidates : [])
+        .flatMap(c => c?.content?.parts || [])
+        .map(p => p?.text).filter(Boolean).join('').trim();
 }
 
 async function generateContent(key, model, prompt) {
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`;
-    // Gemini 3.x no longer needs legacy sampling parameters; keep the request minimal.
     const response = await axios.post(url, {
         contents: [{ role: 'user', parts: [{ text: prompt }] }],
         generationConfig: { maxOutputTokens: MAX_TOKENS }
@@ -97,52 +134,60 @@ async function generateContent(key, model, prompt) {
     throw err;
 }
 
-async function ask(question, old) {
+async function ask(question, old, repliedText) {
     const key = getKey();
     if (!key) throw Object.assign(new Error('AI_NOT_CONFIGURED'), { code: 'AI_NOT_CONFIGURED' });
     const configured = String(config.AI_MODEL || process.env.AI_MODEL || '').trim();
-    // Prefer current GA Flash models. 2.5 can return 404 for newer projects.
-    const models = [...new Set([
-        configured,
-        'gemini-3.7-flash',
-        'gemini-3.6-flash',
-        'gemini-3.5-flash',
-        'gemini-3.5-flash-lite',
-        'gemini-2.5-flash'
-    ].filter(Boolean))];
-    const prompt = makePrompt(question, old);
+    const models = [...new Set([configured, 'gemini-3.7-flash', 'gemini-3.6-flash', 'gemini-3.5-flash', 'gemini-3.5-flash-lite', 'gemini-2.5-flash'].filter(Boolean))];
+    const prompt = makePrompt(question, old, repliedText);
     let last;
     for (const model of models) {
         try { return await generateContent(key, model, prompt); }
-        catch (e) {
-            last = e;
-            if (e.status !== 404) throw e;
-        }
+        catch (e) { last = e; if (e.status !== 404) throw e; }
     }
     throw last || new Error('No supported Gemini model available');
 }
 
 async function handle(conn, mek, m, ctx) {
-    if (!ctx?.isGroup || ctx?.isCmd || mek?.key?.fromMe || !ctx.from?.endsWith('@g.us')) return;
-    if (!isMentioned(conn, mek)) return;
-    const question = clean(findText(unwrapMessage(mek.message)) || ctx.body || '', conn);
-    const key = getKey();
-    if (!question) return conn.sendMessage(ctx.from, { text: 'Yes? 🤖 Ask me something.' }, { quoted: mek });
-    if (!key) return conn.sendMessage(ctx.from, { text: '⚠️ AI is not configured. Add AI_API_KEY in Railway Variables, then redeploy.' }, { quoted: mek });
+    if (!ctx?.isGroup || mek?.key?.fromMe || !ctx.from?.endsWith('@g.us')) return;
 
-    const sessionKey = `${norm(ctx.from)}:${norm(ctx.sender || mek.key.participant || ctx.from)}`;
+    const mentioned = isMentioned(conn, mek);
+    const repliedToBot = isReplyToBot(conn, mek);
+    if (!mentioned && !repliedToBot) return;
+
+    // A reply to one of the bot's own messages is an AI trigger even without @mention.
+    const message = unwrapMessage(mek.message);
+    const question = clean(findText(message) || ctx.body || '', conn);
+    const quotedMessage = repliedToBot ? getQuotedMessage(mek) : null;
+    const quotedText = quotedMessage ? findText(quotedMessage) : '';
+    const key = getKey();
+
+    if (!question && !quotedText) {
+        return conn.sendMessage(ctx.from, { text: 'Yes? 🤖 Ask me something.' }, { quoted: mek });
+    }
+    if (!key) {
+        return conn.sendMessage(ctx.from, { text: '⚠️ AI is not configured. Add AI_API_KEY in Railway Variables, then redeploy.' }, { quoted: mek });
+    }
+
+    const sessionKey = conversationKey(ctx.from, ctx.sender || mek.key.participant || ctx.from);
     if (pending.has(sessionKey) || Date.now() - (cooldown.get(sessionKey) || 0) < COOLDOWN) return;
-    cooldown.set(sessionKey, Date.now()); pending.add(sessionKey);
+    cooldown.set(sessionKey, Date.now());
+    pending.add(sessionKey);
+
     try {
         if (typeof conn.sendPresenceUpdate === 'function') await conn.sendPresenceUpdate('composing', ctx.from);
         const old = history.get(sessionKey) || [];
-        const answer = await ask(question, old);
-        if (MAX_CONTEXT > 0) { old.push({ r: 'user', t: question }, { r: 'assistant', t: answer }); while (old.length > MAX_CONTEXT * 2) old.shift(); history.set(sessionKey, old); }
+        const answer = await ask(question || 'Please respond to the message above.', old, quotedText);
+        if (MAX_CONTEXT > 0) {
+            old.push({ r: 'user', t: question || '(reply to previous message)' }, { r: 'assistant', t: answer });
+            while (old.length > MAX_CONTEXT * 2) old.shift();
+            history.set(sessionKey, old);
+        }
         await conn.sendMessage(ctx.from, { text: answer }, { quoted: mek });
     } catch (error) {
-        console.error(`[AI Mention] ${error?.status || error?.code || ''} ${error?.model || ''} ${error?.message || error}`);
+        console.error(`[AI Mention/Reply] ${error?.status || error?.code || ''} ${error?.model || ''} ${error?.message || error}`);
         const text = error?.status === 404
-            ? '❌ No compatible Gemini model is available for this API key/project. Please create/select a Gemini API key in Google AI Studio and redeploy.'
+            ? '❌ No compatible Gemini model is available for this API key/project. Please check your Gemini API key/project access.'
             : error?.status === 400 || error?.status === 403
                 ? `❌ Gemini AI error (${error.status}). Check the API key/project permissions.`
                 : '❌ AI service temporarily unavailable. Please try again.';
@@ -153,5 +198,5 @@ async function handle(conn, mek, m, ctx) {
     }
 }
 
-cmd({ on: 'body', desc: 'AI replies when the bot is mentioned in a group', category: 'ai', dontAddCommandList: true, filename: __filename }, handle);
-console.log(`🤖 VU ULTIMATE - AI mention handler loaded (${getKey() ? 'API key configured' : 'API key missing'})`);
+cmd({ on: 'body', desc: 'AI replies to bot mentions and replies to bot messages', category: 'ai', dontAddCommandList: true, filename: __filename }, handle);
+console.log(`🤖 VU ULTIMATE - AI mention/reply handler loaded (${getKey() ? 'API key configured' : 'API key missing'})`);
