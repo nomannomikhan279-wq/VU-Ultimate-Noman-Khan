@@ -184,10 +184,10 @@ async function askGemini(question, history) {
 }
 
 async function handleAIMention(conn, mek, context) {
-    const { from, sender, isGroup, isCmd, body, isOwner } = context;
+    const { from, sender, isGroup, isCmd, body } = context;
     if (!isGroup || isCmd || !from?.endsWith('@g.us')) return;
     if (!isBotMentioned(conn, mek)) return;
-    if (mek?.key?.fromMe || isOwner) return;
+    if (mek?.key?.fromMe) return;
 
     const question = cleanMention(body || getMessageText(mek), conn);
     if (!question) {
