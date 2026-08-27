@@ -1,20 +1,20 @@
 // ============================================
 // 🤖 AI MENTION REPLY - VU ULTIMATE
 // Replies only when the bot is actually mentioned in a group.
-// Uses Gemini API via environment variables; never hard-code secrets.
+// Uses Gemini API via the existing environment/config system.
 // ============================================
 
 const axios = require('axios');
 const { cmd } = require('../redx');
 const config = require('../config');
 
-const AI_API_KEY = process.env.AI_API_KEY || process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || '';
-const AI_MODEL = process.env.AI_MODEL || 'gemini-3.7-flash';
-const AI_API_URL = process.env.AI_API_URL || 'https://generativelanguage.googleapis.com/v1beta/interactions';
-const AI_COOLDOWN_MS = Math.max(1000, Number(process.env.AI_COOLDOWN_MS || 5000));
-const AI_CONTEXT_MESSAGES = Math.min(12, Math.max(0, Number(process.env.AI_CONTEXT_MESSAGES || 6)));
-const AI_MAX_OUTPUT_TOKENS = Math.min(2048, Math.max(256, Number(process.env.AI_MAX_OUTPUT_TOKENS || 700)));
-const AI_TIMEOUT_MS = Math.min(60000, Math.max(5000, Number(process.env.AI_TIMEOUT_MS || 30000)));
+const AI_API_KEY = config.AI_API_KEY;
+const AI_MODEL = config.AI_MODEL;
+const AI_API_URL = config.AI_API_URL;
+const AI_COOLDOWN_MS = Math.min(60000, Math.max(1000, config.AI_COOLDOWN_MS || 5000));
+const AI_CONTEXT_MESSAGES = Math.min(12, Math.max(0, config.AI_CONTEXT_MESSAGES || 6));
+const AI_MAX_OUTPUT_TOKENS = Math.min(2048, Math.max(256, config.AI_MAX_OUTPUT_TOKENS || 700));
+const AI_TIMEOUT_MS = Math.min(60000, Math.max(5000, config.AI_TIMEOUT_MS || 30000));
 
 const cooldowns = new Map();
 const conversations = new Map();
@@ -84,7 +84,7 @@ function cleanMention(text, conn) {
     let result = String(text || '');
     const botNumber = jidNumber(conn?.user?.id);
 
-    // WhatsApp renders mentions as @number. Remove the bot's rendered mention.
+    // WhatsApp renders a user mention as @number. Remove only the bot's mention.
     if (botNumber) {
         const mentionRegex = new RegExp(`@${botNumber}\\b`, 'gi');
         result = result.replace(mentionRegex, ' ');
@@ -140,12 +140,11 @@ function extractText(data) {
     }
 
     const outputs = Array.isArray(data?.outputs) ? data.outputs : [];
-    const outputText = outputs
+    return outputs
         .filter(item => typeof item?.text === 'string')
         .map(item => item.text)
         .join('')
         .trim();
-    return outputText || '';
 }
 
 function classifyApiError(error) {
