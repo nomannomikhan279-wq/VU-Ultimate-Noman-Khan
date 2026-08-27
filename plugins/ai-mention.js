@@ -23,15 +23,10 @@ function getKey() {
 function botIds(conn) {
     const ids = new Set();
     const add = j => { if (j) ids.add(norm(j)); };
-    add(conn?.user?.id);
-    add(conn?.authState?.creds?.me?.id);
-    add(conn?.authState?.creds?.me?.lid);
-    add(conn?.authState?.creds?.account?.lid);
+    add(conn?.user?.id); add(conn?.authState?.creds?.me?.id);
+    add(conn?.authState?.creds?.me?.lid); add(conn?.authState?.creds?.account?.lid);
     const n = num(conn?.user?.id) || num(conn?.authState?.creds?.me?.id);
-    if (n) {
-        add(`${n}@s.whatsapp.net`);
-        add(`${n}@lid`);
-    }
+    if (n) { add(`${n}@s.whatsapp.net`); add(`${n}@lid`); }
     return ids;
 }
 
@@ -39,9 +34,7 @@ function collectMentions(value, out = []) {
     if (!value || typeof value !== 'object') return out;
     if (Array.isArray(value)) { value.forEach(v => collectMentions(v, out)); return out; }
     if (Array.isArray(value.mentionedJid)) out.push(...value.mentionedJid);
-    for (const [k, v] of Object.entries(value)) {
-        if (k !== 'mentionedJid' && v && typeof v === 'object') collectMentions(v, out);
-    }
+    for (const [k, v] of Object.entries(value)) if (k !== 'mentionedJid' && v && typeof v === 'object') collectMentions(v, out);
     return out;
 }
 
@@ -67,26 +60,11 @@ function unwrapMessage(message) {
 
 function findText(value) {
     if (!value || typeof value !== 'object') return '';
-    if (Array.isArray(value)) {
-        for (const item of value) { const t = findText(item); if (t) return t; }
-        return '';
-    }
-    for (const t of [
-        value.conversation,
-        value.extendedTextMessage?.text,
-        value.imageMessage?.caption,
-        value.videoMessage?.caption,
-        value.documentMessage?.caption,
-        value.buttonsResponseMessage?.selectedDisplayText,
-        value.listResponseMessage?.title
-    ]) {
+    if (Array.isArray(value)) { for (const item of value) { const t = findText(item); if (t) return t; } return ''; }
+    for (const t of [value.conversation, value.extendedTextMessage?.text, value.imageMessage?.caption, value.videoMessage?.caption, value.documentMessage?.caption]) {
         if (typeof t === 'string' && t.trim()) return t.trim();
     }
-    for (const [k, v] of Object.entries(value)) {
-        if (k !== 'contextInfo' && k !== 'mentionedJid' && v && typeof v === 'object') {
-            const t = findText(v); if (t) return t;
-        }
-    }
+    for (const [k, v] of Object.entries(value)) if (k !== 'contextInfo' && k !== 'mentionedJid' && v && typeof v === 'object') { const t = findText(v); if (t) return t; }
     return '';
 }
 
@@ -94,19 +72,20 @@ function clean(text, conn) {
     let s = String(text || '');
     const botNumber = num(conn?.user?.id) || num(conn?.authState?.creds?.me?.id);
     if (botNumber) s = s.replace(new RegExp(`(^|\\s)@${botNumber}(?=\\s|$|[.,!?])`, 'gi'), '$1 ');
-    return s.replace(/\\s+/g, ' ').trim();
+    return s.replace(/\s+/g, ' ').trim();
 }
 
 function makePrompt(question, old) {
-    const ctx = old.length ? `\\nRecent context:\\n${old.map(x => `${x.r}: ${x.t}`).join('\\n')}` : '';
-    return `You are VU ULTIMATE, a helpful WhatsApp group assistant. Answer directly and concisely. Match the user's English, Urdu, Roman Urdu or Hinglish. Help with programming, knowledge, explanations, translations and calculations. Do not unnecessarily mention being an AI.${ctx}\\n\\nQuestion:\\n${question}`;
+    const ctx = old.length ? `\nRecent context:\n${old.map(x => `${x.r}: ${x.t}`).join('\n')}` : '';
+    return `You are VU ULTIMATE, a helpful WhatsApp group assistant. Answer directly and concisely. Match the user's English, Urdu, Roman Urdu or Hinglish. Help with programming, general knowledge, explanations, translations and calculations. Do not unnecessarily mention being an AI.${ctx}\n\nQuestion:\n${question}`;
 }
 
 async function ask(question, old) {
     const key = getKey();
     if (!key) throw Object.assign(new Error('AI_NOT_CONFIGURED'), { code: 'AI_NOT_CONFIGURED' });
     const model = String(config.AI_MODEL || process.env.AI_MODEL || 'gemini-2.5-flash').trim();
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`;
+    const base = 'https://generativelanguage.googleapis.com/v1beta/models';
+    const url = `${base}/${encodeURIComponent(model)}:generateContent`;
     const response = await axios.post(url, {
         contents: [{ role: 'user', parts: [{ text: makePrompt(question, old) }] }],
         generationConfig: { maxOutputTokens: MAX_TOKENS, temperature: 0.4 }
@@ -116,16 +95,10 @@ async function ask(question, old) {
         validateStatus: () => true
     });
     if (response.status < 200 || response.status >= 300) {
-        const err = new Error(response.data?.error?.message || `Gemini HTTP ${response.status}`);
-        err.status = response.status;
-        throw err;
+        const message = response.data?.error?.message || `Gemini HTTP ${response.status}`;
+        const err = new Error(message); err.status = response.status; throw err;
     }
-    const answer = (response.data?.candidates || [])
-        .flatMap(c => c?.content?.parts || [])
-        .map(p => p?.text)
-        .filter(Boolean)
-        .join('')
-        .trim();
+    const answer = (response.data?.candidates || []).flatMap(c => c?.content?.parts || []).map(p => p?.text).filter(Boolean).join('').trim();
     if (!answer) throw new Error('AI_EMPTY_RESPONSE');
     return answer;
 }
@@ -134,18 +107,14 @@ async function handle(conn, mek, m, ctx) {
     if (!ctx?.isGroup || ctx?.isCmd || mek?.key?.fromMe || !ctx.from?.endsWith('@g.us')) return;
     if (!isMentioned(conn, mek)) return;
 
-    const message = unwrapMessage(mek.message);
-    const question = clean(findText(message) || ctx.body || '', conn);
+    const question = clean(findText(unwrapMessage(mek.message)) || ctx.body || '', conn);
     const key = getKey();
-
     if (!question) return conn.sendMessage(ctx.from, { text: 'Yes? 🤖 Ask me something.' }, { quoted: mek });
-    if (!key) return conn.sendMessage(ctx.from, { text: '⚠️ AI is not configured. Add AI_API_KEY in your deployment Environment Variables, then redeploy.' }, { quoted: mek });
+    if (!key) return conn.sendMessage(ctx.from, { text: '⚠️ AI is not configured. Add AI_API_KEY in Railway Variables, then redeploy.' }, { quoted: mek });
 
     const sessionKey = `${norm(ctx.from)}:${norm(ctx.sender || mek.key.participant || ctx.from)}`;
     if (pending.has(sessionKey) || Date.now() - (cooldown.get(sessionKey) || 0) < COOLDOWN) return;
-    cooldown.set(sessionKey, Date.now());
-    pending.add(sessionKey);
-
+    cooldown.set(sessionKey, Date.now()); pending.add(sessionKey);
     try {
         if (typeof conn.sendPresenceUpdate === 'function') await conn.sendPresenceUpdate('composing', ctx.from);
         const old = history.get(sessionKey) || [];
@@ -158,9 +127,8 @@ async function handle(conn, mek, m, ctx) {
         await conn.sendMessage(ctx.from, { text: answer }, { quoted: mek });
     } catch (error) {
         console.error(`[AI Mention] ${error?.status || error?.code || ''} ${error?.message || error}`);
-        const text = error?.status === 400 || error?.status === 403 || error?.status === 404
-            ? `❌ Gemini AI error (${error.status}). Check AI_API_KEY / AI_MODEL in deployment variables.`
-            : '❌ AI service temporarily unavailable. Please try again.';
+        let text = '❌ AI service temporarily unavailable. Please try again.';
+        if ([400, 403, 404].includes(error?.status)) text = `❌ Gemini AI error (${error.status}). Check the API key and AI_MODEL in Railway Variables.`;
         await conn.sendMessage(ctx.from, { text }, { quoted: mek });
     } finally {
         pending.delete(sessionKey);
