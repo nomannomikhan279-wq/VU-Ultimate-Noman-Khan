@@ -1,3 +1,8 @@
+// VU ULTIMATE bootstrap
+// Compatibility globals are initialized before main.js loads.
+const fs = require('fs');
+global.fsSync = fs;
+
 const express = require('express');
 const app = express();
 const port = process.env.PORT || 8000;
