@@ -12,6 +12,11 @@ function numberOf(jid) {
     return normalizeJid(jid).split('@')[0].replace(/[^0-9]/g, '');
 }
 
+function normalizeNumber(value) {
+    const digits = String(value || '').replace(/[^0-9]/g, '');
+    return digits;
+}
+
 function readBans() {
     try {
         if (!fs.existsSync(BAN_FILE)) fs.writeJsonSync(BAN_FILE, [], { spaces: 2 });
@@ -27,13 +32,6 @@ function writeBans(list) {
     const clean = [...new Set(list.map(numberOf).filter(Boolean))];
     fs.writeJsonSync(BAN_FILE, clean, { spaces: 2 });
     return clean;
-}
-
-function getMentionedJid(m) {
-    const mentioned = m?.msg?.contextInfo?.mentionedJid;
-    if (Array.isArray(mentioned) && mentioned.length) return normalizeJid(mentioned[0]);
-    if (typeof mentioned === 'string') return normalizeJid(mentioned);
-    return '';
 }
 
 function attachBanListener(conn) {
@@ -89,7 +87,7 @@ function attachBanListener(conn) {
     });
 }
 
-// Keep the listener attached after restart as soon as the bot processes a normal message.
+// Attach protection whenever the bot processes a message.
 cmd({
     on: 'body',
     desc: 'Keeps permanent-ban protection active',
@@ -102,39 +100,63 @@ cmd({
 cmd({
     pattern: 'ban',
     alias: ['banuser'],
-    desc: 'Permanently ban a tagged user',
+    desc: 'Permanently ban a user by phone number',
     category: 'admin',
     react: '🚫',
     filename: __filename
-}, async (conn, mek, m, { from, isGroup, isAdmins, isOwner, isBotAdmins, groupAdmins, reply }) => {
+}, async (conn, mek, m, { from, isGroup, isAdmins, isOwner, isBotAdmins, groupMetadata, q, reply }) => {
     attachBanListener(conn);
 
     if (!isGroup) return reply('❌ This command can only be used in groups.');
     if (!isAdmins && !isOwner) return reply('🚫 Only group admins can use .ban.');
     if (!isBotAdmins) return reply('❌ I need to be a group admin to ban and remove users.');
 
-    const target = getMentionedJid(m);
-    if (!target) return reply('❌ Tag the user you want to ban.\n\nExample: .ban @923001234567');
+    // New syntax: .ban 923001234567
+    // The user does NOT need to be in the group.
+    const targetNum = normalizeNumber(q);
+    if (!targetNum) {
+        return reply('❌ Enter the user number.\n\nExample: .ban 923001234567');
+    }
 
-    const targetNum = numberOf(target);
-    if (!targetNum) return reply('❌ Invalid user.');
-    if (targetNum === numberOf(conn.user?.id)) return reply('🤖 I cannot ban myself.');
+    if (targetNum.length < 7 || targetNum.length > 15) {
+        return reply('❌ Invalid phone number. Use the full international number.\n\nExample: .ban 923001234567');
+    }
 
-    const isTargetAdmin = (groupAdmins || []).some(a => numberOf(a) === targetNum);
-    if (isTargetAdmin) return reply('🛡️ You cannot ban a group admin.');
+    const botNum = numberOf(conn.user?.id);
+    if (targetNum === botNum) return reply('🤖 I cannot ban myself.');
+
+    const ownerNumbers = Array.isArray(require('../config').OWNER_NUMBER)
+        ? require('../config').OWNER_NUMBER.map(normalizeNumber)
+        : [];
+    if (ownerNumbers.includes(targetNum)) {
+        return reply('👑 I cannot permanently ban the bot owner.');
+    }
 
     const bans = readBans();
     if (!bans.includes(targetNum)) bans.push(targetNum);
     writeBans(bans);
 
-    try {
-        await conn.groupParticipantsUpdate(from, [`${targetNum}@s.whatsapp.net`], 'remove');
-    } catch (e) {
-        console.error('[BAN] Immediate kick failed:', e.message);
+    // If the user is currently in this group, remove them immediately.
+    const members = Array.isArray(groupMetadata?.participants) ? groupMetadata.participants : [];
+    const targetMember = members.find(p => numberOf(p.id || p.phoneNumber) === targetNum);
+
+    if (targetMember) {
+        const targetIsAdmin = targetMember.admin === 'admin' || targetMember.admin === 'superadmin';
+        if (targetIsAdmin) {
+            // Do not leave a permanent ban behind when an admin cannot be removed.
+            writeBans(bans.filter(n => n !== targetNum));
+            return reply('🛡️ You cannot ban a group admin.');
+        }
+
+        try {
+            await conn.groupParticipantsUpdate(from, [`${targetNum}@s.whatsapp.net`], 'remove');
+        } catch (e) {
+            console.error('[BAN] Immediate kick failed:', e.message);
+        }
     }
 
     return conn.sendMessage(from, {
-        text: `🚫 @${targetNum} has been *PERMANENTLY BANNED*.\n\nIf this user joins the group again, I will automatically remove them.`,
+        text: `🚫 @${targetNum} has been *PERMANENTLY BANNED*.\n\n${targetMember ? 'The user has been removed from this group.\n' : 'The user is not currently in this group.\n'}\nIf this user tries to join any group where this bot is active, I will automatically remove them.`,
         mentions: [`${targetNum}@s.whatsapp.net`]
     }, { quoted: mek });
 });
@@ -142,20 +164,19 @@ cmd({
 cmd({
     pattern: 'unban',
     alias: ['unbanuser'],
-    desc: 'Remove a user from the permanent ban list',
+    desc: 'Remove a user from the permanent ban list by phone number',
     category: 'admin',
     react: '♻️',
     filename: __filename
-}, async (conn, mek, m, { from, isGroup, isAdmins, isOwner, reply }) => {
+}, async (conn, mek, m, { from, isGroup, isAdmins, isOwner, q, reply }) => {
     attachBanListener(conn);
 
     if (!isGroup) return reply('❌ This command can only be used in groups.');
     if (!isAdmins && !isOwner) return reply('🚫 Only group admins can use .unban.');
 
-    const target = getMentionedJid(m);
-    if (!target) return reply('❌ Tag the user you want to unban.\n\nExample: .unban @923001234567');
+    const targetNum = normalizeNumber(q);
+    if (!targetNum) return reply('❌ Enter the user number.\n\nExample: .unban 923001234567');
 
-    const targetNum = numberOf(target);
     const bans = readBans();
     if (!bans.includes(targetNum)) return reply(`ℹ️ @${targetNum} is not on the ban list.`);
 
@@ -187,3 +208,5 @@ cmd({
         mentions: bans.map(n => `${n}@s.whatsapp.net`)
     }, { quoted: mek });
 });
+
+module.exports = { attachBanListener };
