@@ -12,6 +12,7 @@ const CLOSE_HOUR = 22;
 const OPEN_HOUR = 7;
 const CHECK_INTERVAL = 30 * 1000;
 
+const knownSockets = new Map();
 let lastRunKey = '';
 let timerStarted = false;
 
@@ -38,6 +39,11 @@ function botNumber(conn) {
     return String(conn?.user?.id || '').split(':')[0].split('@')[0];
 }
 
+function rememberSocket(conn) {
+    const number = botNumber(conn);
+    if (number) knownSockets.set(number, conn);
+}
+
 function isBotAdmin(metadata, conn) {
     const number = botNumber(conn);
     const lid = String(conn?.authState?.creds?.me?.lid || '').split(':')[0].split('@')[0];
@@ -49,24 +55,22 @@ function isBotAdmin(metadata, conn) {
 }
 
 async function updateAllGroups(shouldClose) {
-    const sockets = global.activeSockets;
-    if (!sockets || typeof sockets.values !== 'function') return;
-
-    for (const conn of sockets.values()) {
+    for (const [number, conn] of knownSockets.entries()) {
         try {
+            if (!conn?.user) continue;
             const groups = await conn.groupFetchAllParticipating();
             for (const jid of Object.keys(groups || {})) {
                 try {
                     const metadata = groups[jid];
                     if (!isBotAdmin(metadata, conn)) continue;
                     await conn.groupSettingUpdate(jid, shouldClose ? 'announcement' : 'not_announcement');
-                    console.log(`[Group Schedule] ${shouldClose ? 'Closed' : 'Opened'} ${metadata?.subject || jid}`);
+                    console.log(`[Group Schedule] ${shouldClose ? 'Closed' : 'Opened'} ${metadata?.subject || jid} (${number})`);
                 } catch (e) {
                     console.error(`[Group Schedule] Failed ${jid}: ${e.message}`);
                 }
             }
         } catch (e) {
-            console.error(`[Group Schedule] Could not fetch groups: ${e.message}`);
+            console.error(`[Group Schedule] Could not fetch groups for ${number}: ${e.message}`);
         }
     }
 }
@@ -96,7 +100,17 @@ function startTimer() {
     console.log('🌙 VU ULTIMATE daily group schedule loaded: 10:00 PM close / 07:00 AM open (Asia/Karachi)');
 }
 
-// main.js exposes activeSockets before plugins are loaded.
+// Register every active bot socket whenever a message is received.
+cmd({
+    on: 'body',
+    desc: 'Register bot socket for daily group scheduling',
+    category: 'system',
+    dontAddCommandList: true,
+    filename: __filename
+}, async (conn) => {
+    rememberSocket(conn);
+});
+
 startTimer();
 
 cmd({
@@ -106,6 +120,7 @@ cmd({
     category: 'group',
     filename: __filename
 }, async (conn, mek, m, ctx) => {
+    rememberSocket(conn);
     if (!ctx?.isGroup) return m.reply('❌ This command can only be used in a group.');
     return m.reply('🌙 *Daily Group Schedule*\n\n🔒 Close: 10:00 PM\n🔓 Open: 7:00 AM\n🕐 Timezone: Asia/Karachi\n\nThe schedule runs automatically every day.');
 });
