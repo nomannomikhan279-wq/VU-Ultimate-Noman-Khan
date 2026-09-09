@@ -12,6 +12,10 @@ const MAX_TOKENS = Math.min(4096, Math.max(128, Number(config.AI_MAX_OUTPUT_TOKE
 const cooldown = new Map();
 const history = new Map();
 const pending = new Set();
+// A WhatsApp message can occasionally be delivered to the body-event layer more than once.
+// Keep a short-lived message-id lock so one incoming message can never create two Gemini calls.
+const handledMessages = new Map();
+const MESSAGE_LOCK_TTL = 2 * 60 * 1000;
 
 const norm = jid => String(jid || '').replace(/:\d+(?=@)/, '').toLowerCase().trim();
 const num = jid => norm(jid).split('@')[0].replace(/[^0-9]/g, '');
@@ -163,7 +167,7 @@ async function ask(question, old) {
     const key = getKey();
     if (!key) throw Object.assign(new Error('AI_NOT_CONFIGURED'), { code: 'AI_NOT_CONFIGURED' });
     const configured = String(config.AI_MODEL || process.env.AI_MODEL || '').trim();
-    const models = [...new Set([configured, 'gemini-3.7-flash', 'gemini-3.6-flash', 'gemini-3.5-flash', 'gemini-3.5-flash-lite', 'gemini-2.5-flash'].filter(Boolean))];
+    const models = [...new Set([configured, 'gemini-3.8-flash', 'gemini-3.7-flash', 'gemini-3.6-flash', 'gemini-3.5-flash', 'gemini-3.5-flash-lite', 'gemini-2.5-flash'].filter(Boolean))];
     const prompt = makePrompt(question, old);
     let last;
     for (const model of models) {
@@ -171,6 +175,18 @@ async function ask(question, old) {
         catch (e) { last = e; if (e.status !== 404) throw e; }
     }
     throw last || new Error('No supported Gemini model available');
+}
+
+function lockMessage(mek) {
+    const id = String(mek?.key?.id || '').trim();
+    if (!id) return true;
+    const now = Date.now();
+    for (const [key, time] of handledMessages) {
+        if (now - time > MESSAGE_LOCK_TTL) handledMessages.delete(key);
+    }
+    if (handledMessages.has(id)) return false;
+    handledMessages.set(id, now);
+    return true;
 }
 
 async function handle(conn, mek, m, ctx) {
@@ -181,6 +197,10 @@ async function handle(conn, mek, m, ctx) {
     // AI only responds to an explicit @mention. Reply-to-bot was intentionally
     // removed because it can create self-reply loops when WhatsApp echoes bot messages.
     if (!isMentioned(conn, mek)) return;
+
+    // Prevent duplicate deliveries of the same WhatsApp message from starting
+    // another Gemini request (the duplicate request was causing a late fallback error).
+    if (!lockMessage(mek)) return;
 
     const question = clean(findText(unwrapMessage(mek.message)) || ctx.body || '', conn);
     if (!question) return conn.sendMessage(ctx.from, { text: 'Yes? 🤖 Ask me something.' }, { quoted: mek });
